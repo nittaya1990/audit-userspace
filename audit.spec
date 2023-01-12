@@ -1,7 +1,7 @@
 
 Summary: User space tools for kernel auditing
 Name: audit
-Version: 3.0.7
+Version: 3.0.10
 Release: 1%{dist}
 License: GPLv2+
 Group: System Environment/Daemons
@@ -15,8 +15,8 @@ BuildRequires: systemd
 
 Requires: %{name}-libs = %{version}-%{release}
 Requires(post): systemd coreutils
-Requires(preun): systemd initscripts
-Requires(postun): systemd coreutils initscript
+Requires(preun): systemd initscripts-service
+Requires(postun): systemd coreutils initscripts-service
 
 %description
 The audit package contains the user space utilities for
@@ -193,6 +193,7 @@ fi
 %files
 %license COPYING
 %doc README ChangeLog rules init.d/auditd.cron
+%attr(755,root,root) %{_datadir}/%{name}
 %attr(644,root,root) %{_datadir}/%{name}/sample-rules/*
 %attr(644,root,root) %{_mandir}/man8/auditctl.8.gz
 %attr(644,root,root) %{_mandir}/man8/auditd.8.gz
@@ -213,7 +214,7 @@ fi
 %attr(755,root,root) /sbin/ausearch
 %attr(755,root,root) /sbin/aureport
 %attr(750,root,root) /sbin/autrace
-%attr(750,root,root) /sbin/augenrules
+%attr(755,root,root) /sbin/augenrules
 %attr(755,root,root) %{_bindir}/aulast
 %attr(755,root,root) %{_bindir}/aulastlog
 %attr(755,root,root) %{_bindir}/ausyscall
@@ -227,6 +228,7 @@ fi
 %attr(750,root,root) %{_libexecdir}/initscripts/legacy-actions/auditd/rotate
 %attr(750,root,root) %{_libexecdir}/initscripts/legacy-actions/auditd/state
 %attr(750,root,root) %{_libexecdir}/initscripts/legacy-actions/auditd/stop
+%attr(750,root,root) %{_libexecdir}/audit-functions
 %ghost %{_localstatedir}/run/auditd.state
 %attr(-,root,-) %dir %{_var}/log/audit
 %attr(750,root,root) %dir /etc/audit
@@ -256,6 +258,6 @@ fi
 
 
 %changelog
-* Fri Oct 01 2021 Steve Grubb <sgrubb@redhat.com> 3.0.7-1
+* Mon Aug 29 2022 Steve Grubb <sgrubb@redhat.com> 3.0.10-1
 - New upstream release
 

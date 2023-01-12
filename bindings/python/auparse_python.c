@@ -28,7 +28,7 @@ auparse_timestamp_compare: because AuEvent calls this via the cmp operator
 
 #if PY_MAJOR_VERSION > 2
 #define IS_PY3K
-#if PY_MINOR_VERSION > 5
+#if PY_MINOR_VERSION >= 5
 #define USE_RICH_COMPARISON
 #endif
 #define MODINITERROR return NULL
@@ -362,11 +362,11 @@ AuParser_init(AuParser *self, PyObject *args, PyObject *kwds)
     case AUSOURCE_FILE_ARRAY: {
         int i, n;
         PyObject *item = NULL;
-        char **files = NULL;
+        const char **files = NULL;
 
         if (PySequence_Check(source)) {
             n = PySequence_Size(source);
-            if ((files = PyMem_New(char *, n+1)) == NULL) {
+            if ((files = (const char **)PyMem_New(char *, n+1)) == NULL) {
                 PyErr_NoMemory();
                 return -1;
             }
@@ -405,11 +405,11 @@ AuParser_init(AuParser *self, PyObject *args, PyObject *kwds)
     case AUSOURCE_BUFFER_ARRAY: {
         int i, n;
         PyObject *item = NULL;
-        char **buffers = NULL;
+        const char **buffers = NULL;
 
         if (PySequence_Check(source)) {
             n = PySequence_Size(source);
-            if ((buffers = PyMem_New(char *, n+1)) == NULL) {
+            if ((buffers = (const char **)PyMem_New(char *, n+1)) == NULL) {
                 PyErr_NoMemory();
                 return -1;
             }
@@ -2387,10 +2387,13 @@ initauparse(void)
     PyModule_AddIntConstant(m, "AUPARSE_TYPE_PROCTITLE", AUPARSE_TYPE_PROCTITLE);
     PyModule_AddIntConstant(m, "AUPARSE_TYPE_HOOK", AUPARSE_TYPE_HOOK);
     PyModule_AddIntConstant(m, "AUPARSE_TYPE_NETACTION", AUPARSE_TYPE_NETACTION);
+    PyModule_AddIntConstant(m, "AUPARSE_TYPE_MACPROTO,", AUPARSE_TYPE_MACPROTO);
     PyModule_AddIntConstant(m, "AUPARSE_TYPE_IOCTL_REQ", AUPARSE_TYPE_IOCTL_REQ);
     PyModule_AddIntConstant(m, "AUPARSE_TYPE_ESCAPED_KEY", AUPARSE_TYPE_ESCAPED_KEY);
     PyModule_AddIntConstant(m, "AUPARSE_TYPE_ESCAPED_FILE", AUPARSE_TYPE_ESCAPED_FILE);
     PyModule_AddIntConstant(m, "AUPARSE_TYPE_FANOTIFY", AUPARSE_TYPE_FANOTIFY);
+    PyModule_AddIntConstant(m, "AUPARSE_TYPE_NLMCGRP", AUPARSE_TYPE_NLMCGRP);
+    PyModule_AddIntConstant(m, "AUPARSE_TYPE_RESOLVE", AUPARSE_TYPE_RESOLVE);
 
     /* Escape types */
     PyModule_AddIntConstant(m, "AUPARSE_ESC_RAW", AUPARSE_ESC_RAW);

@@ -347,7 +347,7 @@ void clear_config(struct daemon_conf *config)
 	config->krb5_principal = NULL;
 	config->krb5_key_file = NULL;
 	config->distribute_network_events = 0;
-	config->q_depth = 1200;
+	config->q_depth = 2000;
 	config->overflow_action = O_SYSLOG;
 	config->max_restarts = 10;
 	config->plugin_dir = strdup("/etc/audit/plugins.d");
@@ -1949,6 +1949,21 @@ static int sanity_check(struct daemon_conf *config)
 		audit_msg(LOG_ERR, 
 		"Error - incremental flushing chosen, but 0 selected for freq");
 		return 1;
+	}
+	if (config->log_group != 0) {
+		int rc = 0;
+		char *path = strdup(config->log_file);
+		const char *dir = dirname(path);
+		if (dir && strcmp(dir, "/var/log") == 0) {
+			audit_msg(LOG_ERR,
+				  "Error - log_file is directly in %s and chgrp"
+				  " will alter a system directory's permissions. Use"
+				  " another directory.", dir);
+			rc = 1;
+		}
+		free(path);
+		if (rc)
+			return rc;
 	}
 	/* Warnings */
 	if (config->flush > FT_INCREMENTAL_ASYNC && config->freq != 0) {

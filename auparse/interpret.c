@@ -123,6 +123,7 @@
 #include "inethooktabs.h"
 #include "netactiontabs.h"
 #include "bpftabs.h"
+#include "openat2-resolvetabs.h"
 
 typedef enum { AVC_UNSET, AVC_DENIED, AVC_GRANTED } avc_t;
 typedef enum { S_UNSET=-1, S_FAILED, S_SUCCESS } success_t;
@@ -894,10 +895,10 @@ static char *path_norm(const char *name)
 		return strdup(name);
 
 	rpath = working;
-	dest = rpath + 1;
+	dest = rpath;
 	rpath_limit = rpath + PATH_MAX;
 
-	for (start = end = name; *start; start = end) {
+	for (start = name; *start; start = end) {
 		// Remove duplicate '/'
 		while (*start == '/')
 			++start;
@@ -1918,7 +1919,16 @@ static char *print_dirfd(const char *val)
 {
 	char *out;
 
-	if (strcmp(val, "-100") == 0) {
+	errno = 0;
+	uint32_t i = strtoul(val, NULL, 16);
+	if (errno) {
+		char *out;
+		if (asprintf(&out, "conversion error(%s)", val) < 0)
+			out = NULL;
+		return out;
+	}
+
+	if (i == 0xffffff9c) {
 		if (asprintf(&out, "AT_FDCWD") < 0)
 			out = NULL;
 	} else {
@@ -2328,6 +2338,40 @@ static const char *print_bpf(const char *val)
 		return strdup(str);
 }
 
+static const char *print_openat2_resolve(const char *val)
+{
+	size_t i;
+	unsigned long long resolve;
+	int cnt = 0;
+	char *out, buf[sizeof(openat2_resolve_strings)+8];
+
+	errno = 0;
+	resolve = strtoull(val, NULL, 16);
+	if (errno) {
+		if (asprintf(&out, "conversion error(%s)", val) < 0)
+			out = NULL;
+		return out;
+	}
+
+	buf[0] = 0;
+	for (i=0; i<OPENAT2_RESOLVE_NUM_ENTRIES; i++) {
+		if (openat2_resolve_table[i].value & resolve) {
+			if (!cnt) {
+				strcat(buf,
+				openat2_resolve_strings + openat2_resolve_table[i].offset);
+				cnt++;
+			} else {
+				strcat(buf, "|");
+				strcat(buf,
+				openat2_resolve_strings + openat2_resolve_table[i].offset);
+			}
+		}
+	}
+	if (buf[0] == 0)
+		snprintf(buf, sizeof(buf), "0x%s", val);
+	return strdup(buf);
+}
+
 static const char *print_a0(const char *val, const idata *id)
 {
 	char *out;
@@ -2337,14 +2381,12 @@ static const char *print_a0(const char *val, const idata *id)
 		if (*sys == 'r') {
 			if (strcmp(sys, "rt_sigaction") == 0)
 		                return print_signals(val, 16);
-			else if (strcmp(sys, "renameat") == 0)
+			else if (strncmp(sys, "renameat", 8) == 0)
 				return print_dirfd(val);
 			else if (strcmp(sys, "readlinkat") == 0)
 				return print_dirfd(val);
 		} else if (*sys == 'c') {
-			if (strcmp(sys, "clone") == 0)
-				return print_clone_flags(val);
-	                else if (strcmp(sys, "clock_settime") == 0)
+	                if (strcmp(sys, "clock_settime") == 0)
 				return print_clock_id(val);
 		} else if (*sys == 'p') {
 	                if (strcmp(sys, "personality") == 0)
@@ -2365,7 +2407,7 @@ static const char *print_a0(const char *val, const idata *id)
 				return print_dirfd(val);
 			else if (strcmp(sys, "fchmodat") == 0)
 				return print_dirfd(val);
-			else if (strcmp(sys, "faccessat") == 0)
+			else if (strncmp(sys, "faccessat", 9) == 0)
 				return print_dirfd(val);
 			else if (strcmp(sys, "futimensat") == 0)
 				return print_dirfd(val);
@@ -2404,9 +2446,7 @@ static const char *print_a0(const char *val, const idata *id)
 			return print_dirfd(val);
 		else if (strcmp(sys, "newfstatat") == 0)
 			return print_dirfd(val);
-		else if (strcmp(sys, "openat") == 0)
-			return print_dirfd(val);
-		else if (strcmp(sys, "openat2") == 0)
+		else if (strncmp(sys, "openat", 6) == 0)
 			return print_dirfd(val);
 		else if (strcmp(sys, "name_to_handle_at") == 0)
 			return print_dirfd(val);
@@ -2549,7 +2589,7 @@ static const char *print_a2(const char *val, const idata *id)
 		} else if (*sys == 'f') {
 			if (strcmp(sys, "fchmodat") == 0)
 				return print_mode_short(val, 16);
-			else if (strcmp(sys, "faccessat") == 0)
+			else if (strncmp(sys, "faccessat", 9) == 0)
 				return print_access(val);
 		} else if (*sys == 's') {
 			if (strcmp(sys, "setresuid") == 0)
@@ -2579,11 +2619,18 @@ static const char *print_a2(const char *val, const idata *id)
 				return print_recv(val);
 			else if (strcmp(sys, "readlinkat") == 0)
 				return print_dirfd(val);
+			else if (strncmp(sys, "renameat", 8) == 0)
+				return print_dirfd(val);
 		} else if (*sys == 'l') {
 			if (strcmp(sys, "linkat") == 0)
 				return print_dirfd(val);
 			else if (strcmp(sys, "lseek") == 0)
 				return print_seek(val);
+		} else if (*sys == 'c') {
+			if (strcmp(sys, "clone") == 0)
+				return print_clone_flags(val);
+			else if (strcmp(sys, "clone2") == 0)
+				return print_clone_flags(val);
 		}
 		else if (strstr(sys, "chown"))
 			return print_gid(val, 16);
@@ -3004,7 +3051,7 @@ int lookup_type(const char *name)
  * This is the main entry point for the auparse library. Call chain is:
  * auparse_interpret_field -> nvlist_interp_cur_val -> do_interpret
  */
-const char *do_interpret(const rnode *r, auparse_esc_t escape_mode)
+const char *do_interpret(rnode *r, auparse_esc_t escape_mode)
 {
 	nvlist *nv = &r->nv;
 	int type;
@@ -3077,7 +3124,8 @@ int auparse_interp_adjust_type(int rtype, const char *name, const char *val)
 			type = AUPARSE_TYPE_ESCAPED;
 		else
 			type = AUPARSE_TYPE_UNCLASSIFIED;
-	}
+	} else if (rtype == AUDIT_KERN_MODULE && strcmp(name, "name") == 0)
+		type = AUPARSE_TYPE_ESCAPED;
 	else
 		type = lookup_type(name);
 
@@ -3234,6 +3282,9 @@ unknown:
 			break;
 		case AUPARSE_TYPE_NLMCGRP:
 			out = print_nlmcgrp(id->val);
+			break;
+		case AUPARSE_TYPE_RESOLVE:
+			out = print_openat2_resolve(id->val);
 			break;
 		case AUPARSE_TYPE_MAC_LABEL:
 		case AUPARSE_TYPE_UNCLASSIFIED:

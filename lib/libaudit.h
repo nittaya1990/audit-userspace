@@ -1,5 +1,5 @@
 /* libaudit.h --
- * Copyright 2004-2018,2021 Red Hat Inc.
+ * Copyright 2004-2018,2021-22 Red Hat Inc.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -23,11 +23,6 @@
 #ifndef _LIBAUDIT_H_
 #define _LIBAUDIT_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-
 #include <asm/types.h>
 #include <stdint.h>
 #include <sys/socket.h>
@@ -35,6 +30,17 @@ extern "C" {
 #include <linux/audit.h>
 #include <stdarg.h>
 #include <syslog.h>
+#ifndef __attr_access
+#  define __attr_access(x)
+#endif
+#ifndef __attr_dealloc
+# define __attr_dealloc(dealloc, argno)
+# define __attr_dealloc_free
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 
 /* Audit message types as of 2.6.29 kernel:
@@ -304,7 +310,15 @@ extern "C" {
 #endif
 
 #ifndef AUDIT_EVENT_LISTENER
-#define AUDIT_EVENT_LISTENER		1335 /* audit mcast sock join/part */
+#define AUDIT_EVENT_LISTENER	1335 /* audit mcast sock join/part */
+#endif
+
+#ifndef AUDIT_URINGOP
+#define AUDIT_URINGOP		1336 /* io_uring operations */
+#endif
+
+#ifndef AUDIT_OPENAT2
+#define AUDIT_OPENAT2		1337 /* openat2 open_how flags */
 #endif
 
 #ifndef AUDIT_MAC_CALIPSO_ADD
@@ -329,6 +343,9 @@ extern "C" {
 /* These are used in filter control */
 #ifndef AUDIT_FILTER_FS
 #define AUDIT_FILTER_FS		0x06 /* FS record filter in __audit_inode_child */
+#endif
+#ifndef AUDIT_FILTER_URING_EXIT
+#define AUDIT_FILTER_URING_EXIT 0x07 /* Apply rule at io_uring op exit */
 #endif
 #ifndef AUDIT_FILTER_EXCLUDE
 #define AUDIT_FILTER_EXCLUDE	AUDIT_FILTER_TYPE
@@ -571,7 +588,8 @@ typedef enum {
 	MACH_ALPHA,	// Deprecated but has to stay
 	MACH_ARM,
 	MACH_AARCH64,
-	MACH_PPC64LE
+	MACH_PPC64LE,
+	MACH_IO_URING
 } machine_t;
 
 /* These are the valid audit failure tunable enum values */
@@ -590,20 +608,24 @@ void set_aumessage_mode(message_t mode, debug_message_t debug);
 typedef enum { GET_REPLY_BLOCKING=0, GET_REPLY_NONBLOCKING } reply_t;
 extern int  audit_open(void);
 extern void audit_close(int fd);
-extern int  audit_get_reply(int fd, struct audit_reply *rep, reply_t block, 
+extern int  audit_get_reply(int fd, struct audit_reply *rep, reply_t block,
 		int peek);
 extern uid_t audit_getloginuid(void);
 extern int  audit_setloginuid(uid_t uid);
 extern uint32_t audit_get_session(void);
 extern int  audit_detect_machine(void);
 extern int audit_determine_machine(const char *arch);
-extern char *audit_format_signal_info(char *buf, int len, char *op, struct audit_reply *rep, char *res);
+extern char *audit_format_signal_info(char *buf, int len, char *op,
+			struct audit_reply *rep, char *res)
+			__attr_access ((__write_only__, 1, 2));
 
 /* Translation functions */
 extern int        audit_name_to_field(const char *field);
 extern const char *audit_field_to_name(int field);
 extern int        audit_name_to_syscall(const char *sc, int machine);
 extern const char *audit_syscall_to_name(int sc, int machine);
+extern const char *audit_uringop_to_name(int uringop);
+extern int        audit_name_to_uringop(const char *uringop);
 extern int        audit_name_to_flag(const char *flag);
 extern const char *audit_flag_to_name(int flag);
 extern int        audit_name_to_action(const char *action);
@@ -618,9 +640,9 @@ extern const char *audit_operator_to_symbol(int op);
 extern int        audit_name_to_errno(const char *error);
 extern const char *audit_errno_to_name(int error);
 extern int        audit_name_to_ftype(const char *name);
-extern const char *audit_ftype_to_name(int ftype); 
+extern const char *audit_ftype_to_name(int ftype);
 extern int        audit_name_to_fstype(const char *name);
-extern const char *audit_fstype_to_name(int fstype); 
+extern const char *audit_fstype_to_name(int fstype);
 extern void audit_number_to_errmsg(int errnumber, const char *opt);
 
 /* AUDIT_GET */
@@ -640,7 +662,8 @@ extern int  audit_set_backlog_limit(int fd, uint32_t limit);
 int audit_set_backlog_wait_time(int fd, uint32_t bwt);
 int audit_reset_lost(int fd);
 int audit_reset_backlog_wait_time_actual(int fd);
-extern int  audit_set_feature(int fd, unsigned feature, unsigned value, unsigned lock);
+extern int  audit_set_feature(int fd, unsigned feature, unsigned value,
+			      unsigned lock);
 extern int  audit_set_loginuid_immutable(int fd);
 
 /* AUDIT_LIST_RULES */
@@ -652,7 +675,6 @@ extern int audit_request_signal_info(int fd);
 /* AUDIT_WATCH */
 extern int audit_update_watch_perms(struct audit_rule_data *rule, int perms);
 extern int audit_add_watch(struct audit_rule_data **rulep, const char *path);
-extern int audit_add_dir(struct audit_rule_data **rulep, const char *path);
 extern int audit_add_watch_dir(int type, struct audit_rule_data **rulep,
 				const char *path);
 extern int audit_trim_subtrees(int fd);
@@ -668,10 +690,15 @@ extern int audit_delete_rule_data(int fd, struct audit_rule_data *rule,
                                   int flags, int action);
 
 /* The following are for standard formatting of messages */
-extern int audit_value_needs_encoding(const char *str, unsigned int size);
-extern char *audit_encode_value(char *final,const char *buf,unsigned int size);
+extern int audit_value_needs_encoding(const char *str, unsigned int size)
+	__attr_access ((__read_only__, 1, 2));
+extern char *audit_encode_value(char *final,const char *buf,unsigned int size)
+	__attr_access ((__write_only__, 1))
+	__attr_access ((__read_only__, 2, 3));
 extern char *audit_encode_nv_string(const char *name, const char *value,
-	unsigned int vlen);
+	unsigned int vlen)
+	__attr_access ((__read_only__, 2, 3))
+	__attr_dealloc_free;
 extern int audit_log_user_message(int audit_fd, int type, const char *message,
         const char *hostname, const char *addr, const char *tty, int result);
 extern int audit_log_user_comm_message(int audit_fd, int type,
@@ -680,8 +707,8 @@ extern int audit_log_user_comm_message(int audit_fd, int type,
 extern int audit_log_acct_message(int audit_fd, int type, const char *pgname,
         const char *op, const char *name, unsigned int id,
         const char *host, const char *addr, const char *tty, int result);
-extern int audit_log_user_avc_message(int audit_fd, int type, 
-	const char *message, const char *hostname, const char *addr, 
+extern int audit_log_user_avc_message(int audit_fd, int type,
+	const char *message, const char *hostname, const char *addr,
 	const char *tty, uid_t uid);
 extern int audit_log_semanage_message(int audit_fd, int type,
 	const char *pgname, const char *op, const char *name, unsigned int id,
@@ -697,9 +724,11 @@ extern int audit_log_user_command(int audit_fd, int type, const char *command,
 extern struct audit_rule_data *audit_rule_create_data(void);
 /* Initializes an existing audit_rule_data struct */
 extern void audit_rule_init_data(struct audit_rule_data *rule);
-extern int audit_rule_syscall_data(struct audit_rule_data *rule, int scall);
 extern int audit_rule_syscallbyname_data(struct audit_rule_data *rule,
                                           const char *scall);
+extern int audit_rule_io_uringbyname_data(struct audit_rule_data *rule,
+                                          const char *scall);
+
 /* Note that the following function takes a **, where audit_rule_fieldpair()
  * takes just a *.  That structure may need to be reallocated as a result of
  * adding new fields */

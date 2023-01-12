@@ -1,7 +1,7 @@
 dnl
 define([AC_INIT_NOTICE],
 [### Generated automatically using autoconf version] AC_ACVERSION [
-### Copyright 2005-21 Steve Grubb <sgrubb@redhat.com>
+### Copyright 2005-22 Steve Grubb <sgrubb@redhat.com>
 ###
 ### Permission is hereby granted, free of charge, to any person obtaining a
 ### copy of this software and associated documentation files (the "Software"),
@@ -29,7 +29,7 @@ define([AC_INIT_NOTICE],
 ])
 
 AC_REVISION($Revision: 1.3 $)dnl
-AC_INIT(audit,3.0.7)
+AC_INIT(audit,3.0.10)
 AC_PREREQ(2.12)dnl
 AM_CONFIG_HEADER(config.h)
 
@@ -58,10 +58,9 @@ echo Checking for header files
 AC_HEADER_STDC
 AC_HEADER_TIME
 
-AC_C_CONST
-AC_C_INLINE
 AC_CHECK_SIZEOF([unsigned int])
 AC_CHECK_SIZEOF([unsigned long])
+dnl; next is needed for old compilers and plugins/ids/Makefile.am
 AM_PROG_CC_C_O
 AC_CHECK_DECLS([AUDIT_FEATURE_VERSION], [], [], [[#include <linux/audit.h>]])
 AC_CHECK_MEMBERS([struct audit_status.feature_bitmap], [], [], [[#include <linux/audit.h>]])
@@ -85,6 +84,20 @@ AC_LINK_IFELSE(
  [AC_DEFINE(HAVE_STRNDUPA, 1, [Let us know if we have it or not])],
  []
 )
+
+AC_MSG_CHECKING(__attr_access support)
+AC_COMPILE_IFELSE(
+  [AC_LANG_SOURCE(
+    [[
+      #include <stdio.h>
+      int audit_fgets(char *buf, size_t blen, int fd)
+        __attr_access ((__write_only__, 1, 2));
+      int main(void) { return 0; }]])],
+  [ACCESS="yes"],
+  [ACCESS="no"]
+)
+AC_MSG_RESULT($ACCESS)
+
 dnl; pthread_yield is used in zos-remote
 OLDLIBS="$LIBS"
 AC_SEARCH_LIBS(pthread_yield, pthread, 
@@ -341,6 +354,21 @@ else
 fi
 ],WARNS="$ALLWARNS")
 
+WFLAGS=""
+AC_MSG_CHECKING(for -Wformat-truncation)
+TMPCFLAGS="${CFLAGS}"
+CFLAGS="${CFLAGS} -Wformat-truncation"
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[]], [[]])],[WFLAGS="-Wno-format-truncation"
+	AC_MSG_RESULT(yes)],
+	[AC_MSG_RESULT(no)])
+CFLAGS="${TMPCFLAGS}"
+CFLAGS="${CFLAGS} -Wunused-but-set-variable"
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[]], [[]])],[WFLAGS="${WFLAGS} -Wno-unused-but-set-variable"
+	AC_MSG_RESULT(yes)],
+	[AC_MSG_RESULT(no)])
+CFLAGS="${TMPCFLAGS}"
+AC_SUBST(WFLAGS)
+
 withval=""
 AC_MSG_CHECKING(whether to include arm eabi processor support)
 AC_ARG_WITH(arm,
@@ -418,6 +446,18 @@ if test x"$LIBWRAP_LIBS" != "x"; then
 	AC_DEFINE_UNQUOTED(HAVE_LIBWRAP, [], Define if tcp_wrappers support is enabled )
 fi
 
+withval=""
+AC_MSG_CHECKING(whether to include io_uring support)
+AC_ARG_WITH(io_uring,
+AS_HELP_STRING([--with-io_uring],[enable io_uring support]),
+use_io_uring=$withval,
+use_io_uring=no)
+if test x$use_io_uring != xno ; then
+     AC_DEFINE(WITH_IO_URING,1,[Define if you want to enable io_uring support.])
+fi
+# AM_CONDITIONAL(USE_IO_URING, test x$use_io_uring = xyes)
+AC_MSG_RESULT($use_io_uring)
+
 # linux/ipx.h - deprecated in 2018
 AC_CHECK_HEADER(linux/ipx.h, ipx_headers=yes, ipx_headers=no)
 if test $ipx_headers = yes ; then
@@ -442,4 +482,5 @@ echo "
   Compiler:               $CC
   Compiler flags:
 `echo $CFLAGS | fmt -w 50 | sed 's,^,                          ,'`
+  __attr_access support:  $ACCESS
 "

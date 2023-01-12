@@ -603,8 +603,8 @@ static void csv_event(auparse_state_t *au,
 		if (auparse_get_field_type(au) == AUPARSE_TYPE_ESCAPED_FILE)
 			val = auparse_interpret_realpath(au);
 		else if (auparse_get_type(au) == AUDIT_CONFIG_CHANGE) {
-			if ((strcmp(action, "set") == 0) ||
-			    strcmp(action, "seccomp-logging") == 0)
+			if (action && ((strcmp(action, "set") == 0) ||
+			    (strcmp(action, "seccomp-logging") == 0)))
 				val = auparse_get_field_name(au);
 			else
 				val = auparse_interpret_field(au);
@@ -712,7 +712,8 @@ static void text_event(auparse_state_t *au,
 	rc = auparse_normalize_subject_secondary(au);
 	if (rc == 1) {
 		int uid = auparse_get_field_int(au);
-		if (uid != id && id != -2)
+		// if they are different, id exists, and uid is not unset
+		if (uid != id && id != -2 && uid != -1)
 			printf(", acting as %s,", auparse_interpret_field(au));
 	}
 
